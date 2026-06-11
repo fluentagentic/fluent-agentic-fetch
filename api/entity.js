@@ -78,7 +78,7 @@ After the JSON, write a detailed narrative paragraph (3-5 sentences) describing 
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 800,
+        max_tokens: 1500,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages: [{ role: 'user', content: prompt }],
       }),
