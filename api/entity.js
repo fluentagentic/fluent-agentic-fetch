@@ -101,22 +101,38 @@ After the JSON, write a detailed narrative paragraph (3-5 sentences) describing 
 
     const cleaned = textBlocks.replace(/```json|```/gi, '').trim();
 
-    // Parse JSON from response
+    // Parse JSON — handle nested objects by finding balanced braces
     let entityData = null;
-    for (const m of [...cleaned.matchAll(/\{[^{}]{20,3000}\}/g)]) {
-      try {
-        const obj = JSON.parse(m[0]);
-        if (typeof obj.entity_score === 'number') { entityData = obj; break; }
-      } catch {}
+    let braceDepth = 0, jsonStart = -1;
+    for (let i = 0; i < cleaned.length; i++) {
+      if (cleaned[i] === '{') {
+        if (braceDepth === 0) jsonStart = i;
+        braceDepth++;
+      } else if (cleaned[i] === '}') {
+        braceDepth--;
+        if (braceDepth === 0 && jsonStart >= 0) {
+          try {
+            const candidate = cleaned.slice(jsonStart, i + 1);
+            const obj = JSON.parse(candidate);
+            if (typeof obj.entity_score === 'number') { entityData = obj; break; }
+          } catch {}
+          jsonStart = -1;
+        }
+      }
     }
 
     if (!entityData) {
       return res.status(502).json({ error: 'Could not parse entity score from response', raw: cleaned.slice(0, 300) });
     }
 
-    // Narrative is everything after the first JSON block
-    const jsonEnd = cleaned.indexOf('}') + 1;
-    const narrative = cleaned.slice(jsonEnd).trim().replace(/^[\n\r]+/, '');
+    // Narrative is everything after the JSON object
+    let narrativeStart = 0;
+    let depth = 0;
+    for (let i = 0; i < cleaned.length; i++) {
+      if (cleaned[i] === '{') depth++;
+      else if (cleaned[i] === '}') { depth--; if (depth === 0) { narrativeStart = i + 1; break; } }
+    }
+    const narrative = cleaned.slice(narrativeStart).trim().replace(/^[\n\r]+/, '');
 
     return res.status(200).json({
       ...entityData,
