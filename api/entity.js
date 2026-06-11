@@ -43,17 +43,26 @@ Check these external sources and score how well this business can be found and v
 - Editorial mentions, press coverage, awards, guides
 - Consistency of business name, address, hours, and contact details across sources
 
+For each source found, note: what information is available, rating/review count if present, and whether details are consistent with other sources.
+
 Score entity presence 0-100:
 - 0-20: Not findable from external sources
-- 21-40: Minimal presence, inconsistent information
+- 21-40: Minimal presence, inconsistent information  
 - 41-60: Present on some platforms, some gaps
 - 61-80: Good presence, reasonably consistent across sources
 - 81-100: Strong verified presence across multiple authoritative sources
 
-Return ONLY valid JSON on the first line with no markdown, then 2 sentences of narrative:
-{"entity_score":0,"sources_found":[],"sources_missing":[],"consistent":true}
+Return ONLY valid JSON on the first line (no markdown), then detailed findings:
+{"entity_score":0,"sources_found":[],"sources_missing":[],"consistent":true,"source_details":{},"scoring_rationale":"","key_gaps":[],"key_strengths":[]}
 
-Use these exact source names in your arrays: google_maps, tripadvisor, opentable, zomato, yelp, editorial_mentions, booking_platform, product_reviews, google_shopping`;
+source_details should be an object like: {"tripadvisor":"4.3/5 from 1575 reviews, #51 in Sydney","opentable":"563 verified diners"}
+scoring_rationale should explain step by step why this score was given
+key_gaps should list specific actionable things missing (max 3)
+key_strengths should list what's working well (max 3)
+
+Use these exact source names: google_maps, tripadvisor, opentable, zomato, yelp, editorial_mentions, booking_platform, product_reviews, google_shopping
+
+After the JSON, write a detailed narrative paragraph (3-5 sentences) describing exactly what an AI agent would find when searching for this business.`;
 
   try {
     const controller = new AbortController();
@@ -94,7 +103,7 @@ Use these exact source names in your arrays: google_maps, tripadvisor, opentable
 
     // Parse JSON from response
     let entityData = null;
-    for (const m of [...cleaned.matchAll(/\{[^{}]{20,800}\}/g)]) {
+    for (const m of [...cleaned.matchAll(/\{[^{}]{20,3000}\}/g)]) {
       try {
         const obj = JSON.parse(m[0]);
         if (typeof obj.entity_score === 'number') { entityData = obj; break; }
