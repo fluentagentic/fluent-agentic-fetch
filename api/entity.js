@@ -32,37 +32,27 @@ export default async function handler(req, res) {
   const isRetail = industry === 'retail';
   const domain = (() => { try { return new URL(url).hostname.replace('www.', ''); } catch { return url; } })();
 
-  const prompt = `You are an AI agent verifying a business before recommending it to a user.
+  const prompt = `You are an AI agent verifying a business before recommending it.
 
-Search for this business: ${url}
+Search for: ${url}
 
-Check these external sources and score how well this business can be found and verified by an AI agent:
-- Google Maps / Google Business Profile
-- TripAdvisor, Zomato, or Yelp ${isRetail ? '(or product review sites like ProductReview.com.au)' : ''}
-- ${isRetail ? 'Google Shopping, product directories, stockist listings' : 'Booking platforms (OpenTable, ResDiary, SevenRooms, Dimmi)'}
-- Editorial mentions, press coverage, awards, guides
-- Consistency of business name, address, hours, and contact details across sources
+Check: Google Maps, TripAdvisor, ${isRetail ? 'product review sites, Google Shopping, directories' : 'OpenTable/booking platforms, Zomato'}, Yelp, editorial mentions, awards.
 
-For each source found, note: what information is available, rating/review count if present, and whether details are consistent with other sources.
+For each source found, note rating/review count and whether NAP (name, address, phone) is consistent.
 
-Score entity presence 0-100:
-- 0-20: Not findable from external sources
-- 21-40: Minimal presence, inconsistent information  
-- 41-60: Present on some platforms, some gaps
-- 61-80: Good presence, reasonably consistent across sources
-- 81-100: Strong verified presence across multiple authoritative sources
+Score 0-100: 0-20 not findable | 21-40 minimal | 41-60 moderate | 61-80 good | 81-100 strong verified presence
 
-Return ONLY valid JSON on the first line (no markdown), then detailed findings:
-{"entity_score":0,"sources_found":[],"sources_missing":[],"consistent":true,"source_details":{},"scoring_rationale":"","key_gaps":[],"key_strengths":[]}
+Return ONLY this JSON (no markdown, no preamble), then one concise paragraph:
+{"entity_score":0,"sources_found":[],"sources_missing":[],"consistent":true,"source_details":{},"scoring_rationale":"2-3 sentences max — key reasons for score","key_gaps":[],"key_strengths":[]}
 
-source_details should be an object like: {"tripadvisor":"4.3/5 from 1575 reviews, #51 in Sydney","opentable":"563 verified diners"}
-scoring_rationale should explain step by step why this score was given
-key_gaps should list specific actionable things missing (max 3)
-key_strengths should list what's working well (max 3)
+Rules:
+- source_details: one line per source e.g. {"tripadvisor":"4.3/5, 1575 reviews, #51 Sydney"}
+- scoring_rationale: 2-3 sentences only — conclusions not workings
+- key_gaps: max 3 items, one line each
+- key_strengths: max 3 items, one line each
+- Narrative: 2-3 sentences — what would an agent find? Be specific, no padding.
 
-Use these exact source names: google_maps, tripadvisor, opentable, zomato, yelp, editorial_mentions, booking_platform, product_reviews, google_shopping
-
-After the JSON, write a detailed narrative paragraph (3-5 sentences) describing exactly what an AI agent would find when searching for this business.`;
+Source names: google_maps, tripadvisor, opentable, zomato, yelp, editorial_mentions, booking_platform, product_reviews, google_shopping`;
 
   try {
     const controller = new AbortController();
@@ -75,11 +65,12 @@ After the JSON, write a detailed narrative paragraph (3-5 sentences) describing 
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'token-efficient-tools-2025-02-19',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1500,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -132,7 +123,14 @@ After the JSON, write a detailed narrative paragraph (3-5 sentences) describing 
       if (cleaned[i] === '{') depth++;
       else if (cleaned[i] === '}') { depth--; if (depth === 0) { narrativeStart = i + 1; break; } }
     }
-    const narrative = cleaned.slice(narrativeStart).trim().replace(/^[\n\r]+/, '');
+    const narrative = cleaned.slice(narrativeStart).trim()
+      .replace(/^[\n\r]+/, '')
+      .replace(/\*\*[^*]+\*\*/g, s => s.slice(2, -2))  // remove bold **
+      .replace(/\*([^*]+)\*/g, '$1')                    // remove italic *
+      .replace(/^#+\s+/gm, '')                          // remove headings
+      .replace(/^---+$/gm, '')                          // remove horizontal rules
+      .replace(/\n{3,}/g, '\n\n')                       // collapse excess newlines
+      .trim();
 
     return res.status(200).json({
       ...entityData,
