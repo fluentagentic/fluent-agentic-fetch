@@ -32,27 +32,26 @@ export default async function handler(req, res) {
   const isRetail = industry === 'retail';
   const domain = (() => { try { return new URL(url).hostname.replace('www.', ''); } catch { return url; } })();
 
-  // Search 1 & 2 are fixed — same for every run.
-  // Search 3 is adaptive but bounded to one rule, so the decision is
-  // deterministic given the same search 1/2 results (and temperature 0).
+  // All 3 searches are fixed — no adaptive branching.
+  // "Not found" on any search is itself a finding, not a gap to chase.
+  // This trades a small amount of recall for run-to-run consistency.
   const search1 = `"${domain}"`;
-  const search2 = isRetail
-    ? `"${domain} reviews"`
-    : `"${domain} TripAdvisor"`;
-  const search3Rule = isRetail
-    ? `If search 1 did not surface a Google Maps/Business rating, search "${domain} Google reviews" next. Otherwise search "${domain} Trustpilot OR ProductReview" for independent review platforms.`
-    : `If search 1 did not surface a Google Maps/Business rating, search "${domain} Google reviews" next. Otherwise search "${domain} OpenTable OR booking" for booking platform presence.`;
+  const search2 = isRetail ? `"${domain} reviews"` : `"${domain} TripAdvisor"`;
+  const search3 = isRetail
+    ? `"${domain} Trustpilot OR ProductReview"`
+    : `"${domain} OpenTable OR editorial review"`;
 
   const prompt = `You are an AI agent verifying a business before recommending it.
 
 Business: ${url}
 
-Run exactly 3 searches, in this order:
-1. ${search1} — find the primary entity: Google Maps/Business rating, address, phone, knowledge panel
-2. ${search2} — find ${isRetail ? 'independent review presence' : 'TripAdvisor rating, review count, ranking'}
-3. ${search3Rule}
+Run exactly these 3 searches, in this order — do not substitute or add searches:
+1. ${search1} — primary entity: Google Maps/Business rating, address, phone, knowledge panel
+2. ${search2} — ${isRetail ? 'independent review presence' : 'TripAdvisor rating, review count, ranking'}
+3. ${search3} — ${isRetail ? 'independent review platforms' : 'booking platform presence and editorial mentions'}
 
-After these 3 searches, score entity presence 0-100 based ONLY on what was found:
+After these 3 searches, score entity presence 0-100 based ONLY on what was found. If a source did not appear in results, mark it as not found — do not search again to confirm.
+
 0-20 not findable | 21-40 minimal | 41-60 moderate | 61-80 good | 81-100 strong verified presence
 
 For each source found, note rating/review count and whether NAP (name, address, phone) is consistent.
