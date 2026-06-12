@@ -32,21 +32,37 @@ export default async function handler(req, res) {
   const isRetail = industry === 'retail';
   const domain = (() => { try { return new URL(url).hostname.replace('www.', ''); } catch { return url; } })();
 
+  // Search 1 & 2 are fixed — same for every run.
+  // Search 3 is adaptive but bounded to one rule, so the decision is
+  // deterministic given the same search 1/2 results (and temperature 0).
+  const search1 = `"${domain}"`;
+  const search2 = isRetail
+    ? `"${domain} reviews"`
+    : `"${domain} TripAdvisor"`;
+  const search3Rule = isRetail
+    ? `If search 1 did not surface a Google Maps/Business rating, search "${domain} Google reviews" next. Otherwise search "${domain} Trustpilot OR ProductReview" for independent review platforms.`
+    : `If search 1 did not surface a Google Maps/Business rating, search "${domain} Google reviews" next. Otherwise search "${domain} OpenTable OR booking" for booking platform presence.`;
+
   const prompt = `You are an AI agent verifying a business before recommending it.
 
-Search for: ${url}
+Business: ${url}
 
-Check: Google Maps, TripAdvisor, ${isRetail ? 'product review sites, Google Shopping, directories' : 'OpenTable/booking platforms, Zomato'}, Yelp, editorial mentions, awards.
+Run exactly 3 searches, in this order:
+1. ${search1} — find the primary entity: Google Maps/Business rating, address, phone, knowledge panel
+2. ${search2} — find ${isRetail ? 'independent review presence' : 'TripAdvisor rating, review count, ranking'}
+3. ${search3Rule}
+
+After these 3 searches, score entity presence 0-100 based ONLY on what was found:
+0-20 not findable | 21-40 minimal | 41-60 moderate | 61-80 good | 81-100 strong verified presence
 
 For each source found, note rating/review count and whether NAP (name, address, phone) is consistent.
-
-Score 0-100: 0-20 not findable | 21-40 minimal | 41-60 moderate | 61-80 good | 81-100 strong verified presence
 
 Return ONLY this JSON (no markdown, no preamble), then one concise paragraph:
 {"entity_score":0,"sources_found":[],"sources_missing":[],"consistent":true,"source_details":{},"scoring_rationale":"2-3 sentences max — key reasons for score","key_gaps":[],"key_strengths":[]}
 
 Rules:
-- source_details: one line per source e.g. {"tripadvisor":"4.3/5, 1575 reviews, #51 Sydney"}
+- Use exactly 3 searches as specified above — no more, no fewer
+- source_details: one line per source e.g. {"google_maps":"4.5/5, 2058 reviews"}
 - scoring_rationale: 2-3 sentences only — conclusions not workings
 - key_gaps: max 3 items, one line each
 - key_strengths: max 3 items, one line each
@@ -65,11 +81,11 @@ Source names: google_maps, tripadvisor, opentable, zomato, yelp, editorial_menti
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'token-efficient-tools-2025-02-19',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1500,
+        temperature: 0,
         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
         messages: [{ role: 'user', content: prompt }],
       }),
