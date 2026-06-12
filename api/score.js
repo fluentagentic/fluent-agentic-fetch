@@ -41,6 +41,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 600,
+        temperature: 0,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
